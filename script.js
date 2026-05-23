@@ -8212,13 +8212,13 @@
     });
   }
 
-  // Подгружает фото-полароид в чемодан-карточку L6. Файлы в
-  // /images/polaroids/{name}.{jpg,png,jpeg}. Если ни один вариант
-  // не нашёлся — оставляет «фото» с флагом-эмодзи как есть.
+  // Подгружает фото-полароид в чемодан-карточку L6. Файлы лежат прямо в
+  // /images/{name}.{jpg|JPG|png|jpeg}. На GitHub Pages регистр расширения
+  // важен — поэтому перебираем оба варианта.
   function tryLoadPolaroidPhoto(polaroidEl, name) {
     const photoEl = polaroidEl.querySelector('.polaroid-photo');
     if (!photoEl) return;
-    const exts = ['jpg', 'png', 'jpeg'];
+    const exts = ['jpg', 'JPG', 'png', 'PNG', 'jpeg', 'JPEG'];
     let i = 0;
     function tryNext() {
       if (i >= exts.length) return;
@@ -8231,32 +8231,39 @@
         photoEl.style.background = '#000';
       };
       img.onerror = () => { i++; tryNext(); };
-      img.src = 'images/polaroids/' + name + '.' + exts[i];
+      img.src = 'images/' + name + '.' + exts[i];
     }
     tryNext();
   }
 
-  // Пытается подгрузить /images/уровень-N.{jpg,png,jpeg}. Если ни один
-  // вариант не загрузился — НЕ показывает битую картинку, оставляет
-  // пунктирную плашку-заглушку с подписью.
+  // Имена фото уровней. У L6 фото нет (мы убрали photoCaption).
+  // На GitHub Pages регистр имеет значение, файлы лежат в /images/levels/
+  // как-есть: l1.jpg, l2.JPG, l3.HEIC, l4.JPG, l5.JPG, final.JPG.
+  // (HEIC браузеры не отображают — для L3 рекомендуется конвертировать
+  // l3.HEIC в l3.jpg на стороне репозитория.)
+  const LEVEL_PHOTO_NAMES = {
+    1: 'l1', 2: 'l2', 3: 'l3', 4: 'l4', 5: 'l5', 7: 'final',
+  };
+
   function tryLoadLevelPhoto(levelId, container, caption) {
-    const exts = ['jpg', 'png', 'jpeg'];
+    const baseName = LEVEL_PHOTO_NAMES[levelId];
+    if (!baseName) return; // нет фото для этого уровня
+    // Перебираем расширения в обоих регистрах — GitHub Pages чувствителен.
+    const exts = ['jpg', 'JPG', 'png', 'PNG', 'jpeg', 'JPEG'];
     let i = 0;
     const altText = caption || ('Уровень ' + levelId);
     function tryNext() {
-      if (i >= exts.length) return; // ничего не нашли — placeholder остался
+      if (i >= exts.length) return;
       const img = new Image();
       img.className = 'level-photo';
       img.alt = altText;
       img.onload = () => {
-        // Картинка загрузилась — заменяем содержимое плашки
         container.innerHTML = '';
         container.appendChild(img);
         container.classList.add('has-photo');
       };
       img.onerror = () => { i++; tryNext(); };
-      // Имя файла на кириллице — браузер сам закодирует
-      img.src = 'images/уровень-' + levelId + '.' + exts[i];
+      img.src = 'images/levels/' + baseName + '.' + exts[i];
     }
     tryNext();
   }
