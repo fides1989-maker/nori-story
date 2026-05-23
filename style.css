@@ -591,11 +591,12 @@ p { margin: 0 0 14px; }
   background-color: rgba(255, 255, 255, 0.5);
   overflow: hidden;
 }
-/* Если картинка нашлась — убираем пунктир, не пытаемся центровать текст */
+/* Если картинка нашлась — убираем пунктир, переключаемся на block-layout */
 .photo-placeholder.has-photo {
   border: 1px solid var(--border-soft);
   background-color: transparent;
   padding: 0;
+  display: block;  /* flex с align-items:center на iOS Safari ломал img height */
 }
 .level-photo {
   display: block;
@@ -3333,6 +3334,13 @@ p { margin: 0 0 14px; }
   justify-content: center;
   border-radius: 2px;
   margin-bottom: 8px;
+  overflow: hidden;
+}
+/* iOS Safari: после загрузки img переключаемся на block-layout,
+   иначе img height вычисляется некорректно (flex + aspect-ratio баг). */
+.polaroid-photo.has-photo {
+  display: block;
+  padding: 0;
 }
 .polaroid-flag {
   font-size: 3rem;

@@ -32,11 +32,15 @@
     const loops = Object.create(null);
 
     // Возвращает массив возможных путей файла — пробуем разные регистры
-    // расширения (GitHub Pages case-sensitive: .mp3 vs .MP3 — разные файлы).
+    // и в имени, и в расширении (GitHub Pages case-sensitive).
     function audioPaths(name) {
+      const cap = name.charAt(0).toUpperCase() + name.slice(1);
       return [
         'sounds/' + name + '.mp3',
         'sounds/' + name + '.MP3',
+        'sounds/' + cap + '.mp3',
+        'sounds/' + cap + '.MP3',
+        'sounds/' + name.toUpperCase() + '.mp3',
       ];
     }
 
@@ -182,7 +186,32 @@
     function isMuted() { return muted; }
     function toggle() { setMuted(!muted); }
 
-    return { play, playLoop, playOnce, stopLoop, stopAll, setMuted, isMuted, toggle };
+    // Предзагрузка звуков: при первом user-gesture создаём Audio для каждого
+    // имени из списка и «разблокируем» через muted play()+pause(). На iOS
+    // Safari preload='auto' молча игнорируется — без этого хака следующие
+    // play() имеют задержку 200-1000мс пока браузер качает файл.
+    function preload(names) {
+      names.forEach((name) => {
+        try {
+          const a = new Audio(audioPaths(name)[0]);
+          a.preload = 'auto';
+          a.muted = true;
+          a.volume = 0;            // двойная страховка от щелчка
+          const pr = a.play();
+          if (pr && pr.then) {
+            pr.then(() => {
+              try { a.pause(); a.currentTime = 0; } catch (e) {}
+            }).catch(() => {
+              try { a.load(); } catch (e) {}
+            });
+          } else {
+            try { a.load(); } catch (e) {}
+          }
+        } catch (e) {}
+      });
+    }
+
+    return { play, playLoop, playOnce, stopLoop, stopAll, setMuted, isMuted, toggle, preload };
   })();
 
   // Делаем доступным изнутри модуля и снаружи (для отладки)
@@ -190,7 +219,20 @@
 
   // Глобальный «клик» — на любой <button> или [role="button"] в игре.
   // Добавлен на capture-фазе, чтобы сработать до обработчика кнопки.
+  let _audioPreloaded = false;
+  function unlockAudioOnce() {
+    if (_audioPreloaded) return;
+    _audioPreloaded = true;
+    // Прелоадим критичные звуки в кэш. На iOS Safari только в этом
+    // user-gesture тике можно «разблокировать» Audio API.
+    AUDIO.preload(['click','success','error','meow','purr','love','final',
+                   'yes','noy','dub','georgia','cartoon-bite']);
+  }
+  // Слушаем оба события — touchstart срабатывает на ~150мс раньше click
+  // на тапе по мобильному, плюс работает даже если click не дойдёт.
+  document.addEventListener('touchstart', unlockAudioOnce, { capture: true, passive: true });
   document.addEventListener('click', (e) => {
+    unlockAudioOnce();
     const target = e.target.closest('button, [role="button"]');
     if (!target) return;
     if (target.disabled) return;
@@ -7315,13 +7357,18 @@
       // Камера приближается — масштаб Нори вырастает
       noriBox.classList.add('zooming');
       later(() => {
-        // КУСЬ-стикер выскакивает + кульминационный звук укуса
-        AUDIO.play('cartoon-bite');
+        // Создаём стикер заранее, чтобы дать браузеру commit'нуть в DOM,
+        // и одновременно с активацией .show запускаем звук — синхронно.
         const sticker = document.createElement('div');
         sticker.className = 'level7-kus-sticker';
         sticker.innerHTML = buildKusStickerSVG();
         stage.appendChild(sticker);
-        later(() => sticker.classList.add('show'), 50);
+        // requestAnimationFrame гарантирует, что .show triggernet анимацию,
+        // и звук стартует ровно в тот же кадр, что и pop стикера.
+        requestAnimationFrame(() => {
+          AUDIO.play('cartoon-bite');
+          sticker.classList.add('show');
+        });
         later(() => {
           sticker.classList.add('fade');
           later(() => {
@@ -8312,10 +8359,12 @@
   function tryLoadPolaroidPhoto(polaroidEl, name) {
     const photoEl = polaroidEl.querySelector('.polaroid-photo');
     if (!photoEl) return;
+    // У тебя файлы в /images/polaroids/ — пробуем эту папку ПЕРВОЙ
+    // чтобы не было 6 лишних 404-запросов на мобильном.
     const paths = [];
     ['jpg','JPG','jpeg','JPEG','png','PNG'].forEach(ext => {
-      paths.push('images/' + name + '.' + ext);
       paths.push('images/polaroids/' + name + '.' + ext);
+      paths.push('images/' + name + '.' + ext);
     });
     let i = 0;
     function tryNext() {
@@ -8327,6 +8376,10 @@
         photoEl.innerHTML = '';
         photoEl.appendChild(img);
         photoEl.style.background = '#000';
+        // iOS Safari криво считает height у img:height=100% внутри flex-родителя
+        // с aspect-ratio. Переключаемся на block-layout — child заполняет
+        // родителя по реальной геометрии.
+        photoEl.classList.add('has-photo');
       };
       img.onerror = () => { i++; tryNext(); };
       img.src = paths[i];
