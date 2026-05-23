@@ -2075,21 +2075,21 @@
         on(next, 'click', () => fadeReplace(renderLevelFinal()));
         btnRow.appendChild(next);
       } else {
-        // Вторичная: попробовать ещё один бизнес
-        const tryMore = document.createElement('button');
-        tryMore.className = 'btn btn-secondary';
-        tryMore.type = 'button';
-        tryMore.textContent = 'Ещё одну попытку';
-        on(tryMore, 'click', () => fadeReplace(renderBranchSelect()));
-        btnRow.appendChild(tryMore);
-
-        // Основная: пропустить остальные бизнесы и идти дальше
+        // Слева — «в найм» (основная)
         const skip = document.createElement('button');
         skip.className = 'btn btn-primary';
         skip.type = 'button';
-        skip.textContent = 'Хватит, идём в найм →';
+        skip.textContent = 'Возвращаемся в найм!';
         on(skip, 'click', () => fadeReplace(renderLevelFinal()));
         btnRow.appendChild(skip);
+
+        // Справа — «ещё один бизнес» (вторичная)
+        const tryMore = document.createElement('button');
+        tryMore.className = 'btn btn-secondary';
+        tryMore.type = 'button';
+        tryMore.textContent = 'Попробуем ещё один бизнес?';
+        on(tryMore, 'click', () => fadeReplace(renderBranchSelect()));
+        btnRow.appendChild(tryMore);
       }
 
       wrap.appendChild(btnRow);
@@ -3618,9 +3618,10 @@
       ],
       'self-self': RESTORE_QUOTES,
       'vera-self': [
-        'Сам? Вера бы тоже справилась. И очков больше.',
-        'Мог бы Вере. Семейный фронт.',
-        'Тащишь сам — почёт, но не оптимально.',
+        'Помог жене — кот одобряет. 🐾',
+        'Молодец. Ты человек семьи.',
+        'Сам разобрался — Вера оценит. Я тоже.',
+        'Уважаю. Не всё на жене.',
       ],
       'vera-junior': [
         'Евгений не знает, что покупать маме.',
@@ -3628,9 +3629,10 @@
         'Странное решение.',
       ],
       'vera-vera': [
-        'Идеально. По профилю.',
-        'Точно её. Гладко.',
-        'Семейный фронт прикрыт.',
+        'Опять Вере? Она тоже человек.',
+        'Семейный фронт прикрыт. Но не каждый раз.',
+        'Удобно. Только не злоупотребляй.',
+        'Вера снова. Хм.',
       ],
       'vera-skip': [
         'Бытовуху не забивают. Бумеранг будет.',
@@ -4653,34 +4655,32 @@
     // Соседние плитки в строке встречаются концами: шаг по X = W/√2.
     // Между «строками шевронов» вертикальный шаг — высота шеврона = W/√2.
     const TILE_W = 96, TILE_H = 22;
-    const TILE_COUNT = 15;
     const SQ2 = Math.SQRT2;
     const STEP_X = TILE_W / SQ2;            // ≈ 67.9 — встреча углами в строке
     const STEP_Y = TILE_W / SQ2 / 2;        // ≈ 33.9 — половина высоты шеврона
     const IDEAL_TILES = [];
     (function buildIdealLayout() {
-      const cols = 5, rows = 3;
-      // Центрируем композицию в игровой зоне (canvas 600, поле 20-580).
-      // Реальная ширина включает половину диагонали крайних плиток.
+      // 4 столбца × 4 ряда = 16 плиток. Чётное число столбцов гарантирует,
+      // что каждая плитка имеет парную «соседку» по шеврону — нет одиноких,
+      // развёрнутых не в ту сторону.
+      const cols = 4, rows = 4;
       const layoutW = (cols - 1) * STEP_X + TILE_W / SQ2;
       const xStart = (600 - layoutW) / 2 + (TILE_W / (2 * SQ2));
-      const yStart = 60;
+      const yStart = 50;
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           // Чередуем наклон по столбцам — соседи образуют V-шеврон.
           const tilted = (c % 2 === 0);
-          // Каждый второй ряд сдвинут на пол-шага по X для классической
-          // «ёлочки со смещением».
-          const rowOffset = (r % 2 === 1) ? STEP_X / 2 : 0;
           IDEAL_TILES.push({
             idx: r * cols + c,
-            x: xStart + c * STEP_X + rowOffset,
-            y: yStart + r * STEP_Y * 2,  // строка шевронов = высота полного шеврона
+            x: xStart + c * STEP_X,
+            y: yStart + r * STEP_Y * 2,
             rotation: tilted ? -45 : 45,
           });
         }
       }
     })();
+    const TILE_COUNT = IDEAL_TILES.length;  // 16
 
     // --- Прогресс ---
     const progress = {
@@ -5905,73 +5905,48 @@
         rafId = requestAnimationFrame(tick);
       }
 
-      // -------- INPUT --------
-      // ВАЖНО: после каждого действия вызываем draw() явно — на случай если rAF
-      // подвисает (фон вкладки, iframe и т.п.). Делает игру детерминированной.
-      on(canvas, 'mousedown', (e) => {
+      // -------- INPUT (Pointer Events — единые для мыши и тача) --------
+      // setPointerCapture гарантирует, что палец/курсор «прилипает» к canvas
+      // даже если ушёл за пределы — стабильно для дрэга на мобильных.
+      const PICKUP_Y_MAX = 252;   // вся стена (увеличили под новую геометрию)
+      const PILE_Y_MIN   = 288;
+
+      on(canvas, 'pointerdown', (e) => {
         if (p3.finished) return;
+        // На мыши — только левая кнопка
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         const c = canvasCoordsFromEvent(e);
         p3.mouseX = c.x; p3.mouseY = c.y;
-        e.preventDefault();
+        try { canvas.setPointerCapture(e.pointerId); } catch (er) {}
         if (!p3.dragging) {
-          if (c.y >= 12 && c.y <= 172) {
-            if (pickupPlacedAt(c.x, c.y)) { draw(); return; }
+          if (c.y >= 12 && c.y <= PICKUP_Y_MAX) {
+            if (pickupPlacedAt(c.x, c.y)) { draw(); e.preventDefault(); return; }
           }
-          if (c.y >= 288 && p3.pileCount > 0) {
+          if (c.y >= PILE_Y_MIN && p3.pileCount > 0) {
             pickupFromPile();
           }
         }
         draw();
+        e.preventDefault();
       });
-      on(canvas, 'mousemove', (e) => {
+      on(canvas, 'pointermove', (e) => {
         const c = canvasCoordsFromEvent(e);
         p3.mouseX = c.x; p3.mouseY = c.y;
-        if (p3.dragging) draw();
+        if (p3.dragging) { draw(); e.preventDefault(); }
       });
-      on(canvas, 'mouseup', () => {
+      on(canvas, 'pointerup', (e) => {
+        try { canvas.releasePointerCapture(e.pointerId); } catch (er) {}
         if (p3.dragging) { placeDragging(); draw(); }
       });
-      on(canvas, 'mouseleave', () => {
+      on(canvas, 'pointercancel', (e) => {
+        try { canvas.releasePointerCapture(e.pointerId); } catch (er) {}
         if (p3.dragging) { placeDragging(); draw(); }
       });
+      // Right-click — поворот на 90° (десктоп)
       on(canvas, 'contextmenu', (e) => {
         e.preventDefault();
         rotateDragging(90);
         draw();
-      });
-      // ===== TOUCH-ПОДДЕРЖКА (мобильные) =====
-      // touchstart = mousedown, touchmove = mousemove, touchend = mouseup
-      function touchPos(e) {
-        const t = e.touches?.[0] || e.changedTouches?.[0];
-        if (!t) return null;
-        return canvasCoordsFromEvent({ clientX: t.clientX, clientY: t.clientY });
-      }
-      on(canvas, 'touchstart', (e) => {
-        if (p3.finished) return;
-        const c = touchPos(e); if (!c) return;
-        p3.mouseX = c.x; p3.mouseY = c.y;
-        e.preventDefault();
-        if (!p3.dragging) {
-          if (c.y >= 12 && c.y <= 172) {
-            if (pickupPlacedAt(c.x, c.y)) { draw(); return; }
-          }
-          if (c.y >= 288 && p3.pileCount > 0) {
-            pickupFromPile();
-          }
-        }
-        draw();
-      }, { passive: false });
-      on(canvas, 'touchmove', (e) => {
-        const c = touchPos(e); if (!c) return;
-        p3.mouseX = c.x; p3.mouseY = c.y;
-        if (p3.dragging) { draw(); e.preventDefault(); }
-      }, { passive: false });
-      on(canvas, 'touchend', (e) => {
-        if (p3.dragging) { placeDragging(); draw(); }
-        e.preventDefault();
-      }, { passive: false });
-      on(canvas, 'touchcancel', () => {
-        if (p3.dragging) { placeDragging(); draw(); }
       });
       // Кнопка «Повернуть» — для мобильных (правый клик там недоступен)
       if (rotateBtn) {
@@ -6635,8 +6610,20 @@
       saveProgress();
       selectedItemId = null;
 
-      // Реплика
-      const reply = item.universal ? UNIVERSAL_LINE : pickCorrectLine();
+      // Реплика. Для некоторых предметов — кастомные комментарии
+      // (воришки на кросс-боди, и т.п.); иначе случайная похвала.
+      const CUSTOM_CORRECT = {
+        crossbody: 'Кросс-боди — против воришек. Карманники в Италии цепкие. ' +
+                   'А у вас сумка спереди и на молнии. Молодцы.',
+      };
+      let reply;
+      if (CUSTOM_CORRECT[item.id]) {
+        reply = CUSTOM_CORRECT[item.id];
+      } else if (item.universal) {
+        reply = UNIVERSAL_LINE;
+      } else {
+        reply = pickCorrectLine();
+      }
       setBubble(scope, reply, 'correct');
 
       refreshSuitcaseCounts(scope);
@@ -7454,8 +7441,8 @@
       card.className = 'level7-letter';
       card.innerHTML =
         '<p>Я смотрю на всё, что у нас было, и не могу поверить, как нам повезло. ' +
-        'Я люблю тебя. Очень. Каждый день. Все эти годы и все, что впереди. ' +
-        'С днём рождения, мой человек!</p>';
+        'Я люблю тебя! Люблю все эти годы вместе, и все, что ещё впереди. ' +
+        'С днём рождения, любимый!</p>';
       wrap.appendChild(card);
 
       // Рамка под фото — подгружаем то же images/уровень-7.jpg, что и на
@@ -7965,19 +7952,11 @@
     mapDialog.el = dialog;
     mapDialog.textEl = textEl;
 
-    // Подвал: кнопка «К финалу» если всё пройдено + кнопка сброса
+    // Подвал: кнопка сброса. Кнопка «К финалу» убрана — финальный экран
+    // уровня 7 («С днём рождения, любимый!») и есть последний слайд.
     const footer = document.createElement('div');
     footer.className = 'map-footer';
-    if (state.completedLevels.length === LEVELS.length) {
-      const finalBtn = document.createElement('button');
-      finalBtn.className = 'btn btn-primary';
-      finalBtn.type = 'button';
-      finalBtn.textContent = 'К финалу';
-      finalBtn.addEventListener('click', () => goTo('final'));
-      footer.appendChild(finalBtn);
-    } else {
-      footer.appendChild(document.createElement('span'));
-    }
+    footer.appendChild(document.createElement('span'));
     const reset = document.createElement('button');
     reset.className = 'btn btn-ghost';
     reset.type = 'button';
@@ -8013,11 +7992,10 @@
       const id = justCompletedLevelId;
       justCompletedLevelId = null;
       const text = DIALOGS.afterLevel[id] || '';
-      if (id === LEVELS.length) {
-        showMapDialog(text, { duration: 1800, onComplete: () => goTo('final') });
-      } else {
-        showMapDialog(text, { duration: 3600 });
-      }
+      // После любого уровня (включая последний) — просто показываем реплику
+      // на карте. Финальный экран-заглушка удалён — последний слайд это
+      // birthday-screen внутри L7.
+      showMapDialog(text, { duration: 3600 });
       return;
     }
     // Первый визит — длинная реплика
@@ -8368,12 +8346,17 @@
   function tryLoadLevelPhoto(levelId, container, caption) {
     const baseName = LEVEL_PHOTO_NAMES[levelId];
     if (!baseName) return; // нет фото для этого уровня
-    // Перебираем расширения в обоих регистрах — GitHub Pages чувствителен.
-    const exts = ['jpg', 'JPG', 'png', 'PNG', 'jpeg', 'JPEG'];
+    // Пробуем все комбинации: подпапка levels/ или корень images/,
+    // и все варианты регистра расширения (GitHub Pages case-sensitive).
+    const paths = [];
+    ['jpg','JPG','jpeg','JPEG','png','PNG'].forEach(ext => {
+      paths.push('images/levels/' + baseName + '.' + ext);
+      paths.push('images/' + baseName + '.' + ext);
+    });
     let i = 0;
     const altText = caption || ('Уровень ' + levelId);
     function tryNext() {
-      if (i >= exts.length) return;
+      if (i >= paths.length) return;
       const img = new Image();
       img.className = 'level-photo';
       img.alt = altText;
@@ -8383,7 +8366,7 @@
         container.classList.add('has-photo');
       };
       img.onerror = () => { i++; tryNext(); };
-      img.src = 'images/levels/' + baseName + '.' + exts[i];
+      img.src = paths[i];
     }
     tryNext();
   }
