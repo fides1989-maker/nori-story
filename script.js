@@ -31,13 +31,30 @@
     // Зацикленные звуки (purr) — храним инстансы по имени
     const loops = Object.create(null);
 
+    // Возвращает массив возможных путей файла — пробуем разные регистры
+    // расширения (GitHub Pages case-sensitive: .mp3 vs .MP3 — разные файлы).
+    function audioPaths(name) {
+      return [
+        'sounds/' + name + '.mp3',
+        'sounds/' + name + '.MP3',
+      ];
+    }
+
     function play(name, opts) {
       if (muted) return null;
       opts = opts || {};
+      const paths = audioPaths(name);
+      const vol = (opts.volume != null) ? opts.volume : (DEFAULT_VOLUME[name] || 0.5);
       try {
-        const a = new Audio('sounds/' + name + '.mp3');
-        a.volume = (opts.volume != null) ? opts.volume : (DEFAULT_VOLUME[name] || 0.5);
-        // play() возвращает Promise; ловим reject (например, autoplay-block) тихо
+        const a = new Audio(paths[0]);
+        a.volume = vol;
+        // Если первый путь не загрузился — пробуем альтернативные регистры.
+        let pi = 1;
+        a.addEventListener('error', function tryNext() {
+          if (pi >= paths.length) return;
+          a.src = paths[pi++];
+          a.play().catch(() => {});
+        });
         const pr = a.play();
         if (pr && pr.catch) pr.catch(() => {});
         return a;
@@ -48,9 +65,17 @@
       if (muted) return null;
       opts = opts || {};
       stopLoop(name);
+      const paths = audioPaths(name);
       try {
-        const a = new Audio('sounds/' + name + '.mp3');
+        const a = new Audio(paths[0]);
         a.loop = true;
+        // Если первый путь не нашёлся (404 на GitHub) — пробуем другой регистр
+        let pi = 1;
+        a.addEventListener('error', function tryNext() {
+          if (pi >= paths.length) return;
+          a.src = paths[pi++];
+          a.play().catch(() => {});
+        });
         const targetVol = (opts.volume != null) ? opts.volume : (DEFAULT_VOLUME[name] || 0.4);
         if (opts.fadeIn && opts.fadeIn > 0) {
           a.volume = 0;
@@ -105,9 +130,16 @@
       if (muted) return null;
       opts = opts || {};
       stopLoop(name);
+      const paths = audioPaths(name);
       try {
-        const a = new Audio('sounds/' + name + '.mp3');
+        const a = new Audio(paths[0]);
         a.loop = false;
+        let pi = 1;
+        a.addEventListener('error', function tryNext() {
+          if (pi >= paths.length) return;
+          a.src = paths[pi++];
+          a.play().catch(() => {});
+        });
         const targetVol = (opts.volume != null) ? opts.volume : (DEFAULT_VOLUME[name] || 0.4);
         if (opts.fadeIn && opts.fadeIn > 0) {
           a.volume = 0;
@@ -2028,18 +2060,39 @@
       // кнопки «Запустим ещё один бизнес?» внизу.
 
       const allDone = allBranchesComplete();
-      const next = document.createElement('button');
-      next.className = 'btn btn-primary';
-      next.type = 'button';
-      next.textContent = allDone ? 'К итогам' : 'Запустим ещё один бизнес?';
-      on(next, 'click', () => {
-        if (allDone) {
-          fadeReplace(renderLevelFinal());
-        } else {
-          fadeReplace(renderBranchSelect());
-        }
-      });
-      wrap.appendChild(next);
+
+      // Ряд из одной или двух кнопок:
+      //   — если ВСЕ ветки пройдены → одна большая «К итогам»
+      //   — иначе → две: «Хватит, идём в найм →» (основная) + «Ещё одну попытку» (вторичная)
+      const btnRow = document.createElement('div');
+      btnRow.className = 'level2-branch-final-btns';
+
+      if (allDone) {
+        const next = document.createElement('button');
+        next.className = 'btn btn-primary';
+        next.type = 'button';
+        next.textContent = 'К итогам';
+        on(next, 'click', () => fadeReplace(renderLevelFinal()));
+        btnRow.appendChild(next);
+      } else {
+        // Вторичная: попробовать ещё один бизнес
+        const tryMore = document.createElement('button');
+        tryMore.className = 'btn btn-secondary';
+        tryMore.type = 'button';
+        tryMore.textContent = 'Ещё одну попытку';
+        on(tryMore, 'click', () => fadeReplace(renderBranchSelect()));
+        btnRow.appendChild(tryMore);
+
+        // Основная: пропустить остальные бизнесы и идти дальше
+        const skip = document.createElement('button');
+        skip.className = 'btn btn-primary';
+        skip.type = 'button';
+        skip.textContent = 'Хватит, идём в найм →';
+        on(skip, 'click', () => fadeReplace(renderLevelFinal()));
+        btnRow.appendChild(skip);
+      }
+
+      wrap.appendChild(btnRow);
 
       return wrap;
     }
@@ -4595,23 +4648,34 @@
     // --- Данные Части 3: герринбон ровно по проекту ---
     // 15 плиток в верхней половине стены (для игрока). Размеры подобраны так,
     // чтобы при правильной укладке плитки смыкались боками без зазоров.
-    // Геометрия плитки в стиле «ёлочка» (herringbone), плотно — как на фото
-    // реальной кухни. Соседние плитки разделены тонким белым швом и
-    // встречаются углами. Подобраны: TILE 60×16, шаги 44×34.
-    const TILE_W = 60, TILE_H = 16;
+    // Геометрия плитки «ёлочка» (herringbone) — точная.
+    // При повороте плитки на ±45° её проекция на ось X равна W/√2.
+    // Соседние плитки в строке встречаются концами: шаг по X = W/√2.
+    // Между «строками шевронов» вертикальный шаг — высота шеврона = W/√2.
+    const TILE_W = 96, TILE_H = 22;
     const TILE_COUNT = 15;
+    const SQ2 = Math.SQRT2;
+    const STEP_X = TILE_W / SQ2;            // ≈ 67.9 — встреча углами в строке
+    const STEP_Y = TILE_W / SQ2 / 2;        // ≈ 33.9 — половина высоты шеврона
     const IDEAL_TILES = [];
     (function buildIdealLayout() {
       const cols = 5, rows = 3;
-      const colStep = 64, rowStep = 36;
-      const xStart = 90, yStart = 42;
+      // Центрируем композицию в игровой зоне (canvas 600, поле 20-580).
+      // Реальная ширина включает половину диагонали крайних плиток.
+      const layoutW = (cols - 1) * STEP_X + TILE_W / SQ2;
+      const xStart = (600 - layoutW) / 2 + (TILE_W / (2 * SQ2));
+      const yStart = 60;
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          const tilted = (r + c) % 2 === 0;
+          // Чередуем наклон по столбцам — соседи образуют V-шеврон.
+          const tilted = (c % 2 === 0);
+          // Каждый второй ряд сдвинут на пол-шага по X для классической
+          // «ёлочки со смещением».
+          const rowOffset = (r % 2 === 1) ? STEP_X / 2 : 0;
           IDEAL_TILES.push({
             idx: r * cols + c,
-            x: xStart + c * colStep + (r % 2 === 1 ? 32 : 0),
-            y: yStart + r * rowStep,
+            x: xStart + c * STEP_X + rowOffset,
+            y: yStart + r * STEP_Y * 2,  // строка шевронов = высота полного шеврона
             rotation: tilted ? -45 : 45,
           });
         }
@@ -5463,15 +5527,22 @@
       const hint = document.createElement('p');
       hint.className = 'level5-hint';
       hint.textContent =
-        'Зажми плитку в стопке снизу, тащи на стену, отпусти где захочешь. ' +
-        'R или правый клик — повернуть. Кликни на уложенную — взять обратно.';
+        'Тяни плитку из стопки снизу к стене и отпусти. ' +
+        'Кликни на уложенную — взять обратно. R — повернуть.';
       wrap.appendChild(hint);
 
-      later(() => startP3(canvas, bubble, hud, wrap), 80);
+      // Кнопка «Повернуть» для мобильных (на десктопе скрыта)
+      const rotateBtn = document.createElement('button');
+      rotateBtn.className = 'level5-tile-rotate-btn';
+      rotateBtn.type = 'button';
+      rotateBtn.textContent = '↻ Повернуть';
+      wrap.appendChild(rotateBtn);
+
+      later(() => startP3(canvas, bubble, hud, wrap, rotateBtn), 80);
       return wrap;
     }
 
-    function startP3(canvas, bubble, hud, wrap) {
+    function startP3(canvas, bubble, hud, wrap, rotateBtn) {
       const ctx = canvas.getContext('2d');
       const W = canvas.width, H = canvas.height;
 
@@ -5868,6 +5939,47 @@
         rotateDragging(90);
         draw();
       });
+      // ===== TOUCH-ПОДДЕРЖКА (мобильные) =====
+      // touchstart = mousedown, touchmove = mousemove, touchend = mouseup
+      function touchPos(e) {
+        const t = e.touches?.[0] || e.changedTouches?.[0];
+        if (!t) return null;
+        return canvasCoordsFromEvent({ clientX: t.clientX, clientY: t.clientY });
+      }
+      on(canvas, 'touchstart', (e) => {
+        if (p3.finished) return;
+        const c = touchPos(e); if (!c) return;
+        p3.mouseX = c.x; p3.mouseY = c.y;
+        e.preventDefault();
+        if (!p3.dragging) {
+          if (c.y >= 12 && c.y <= 172) {
+            if (pickupPlacedAt(c.x, c.y)) { draw(); return; }
+          }
+          if (c.y >= 288 && p3.pileCount > 0) {
+            pickupFromPile();
+          }
+        }
+        draw();
+      }, { passive: false });
+      on(canvas, 'touchmove', (e) => {
+        const c = touchPos(e); if (!c) return;
+        p3.mouseX = c.x; p3.mouseY = c.y;
+        if (p3.dragging) { draw(); e.preventDefault(); }
+      }, { passive: false });
+      on(canvas, 'touchend', (e) => {
+        if (p3.dragging) { placeDragging(); draw(); }
+        e.preventDefault();
+      }, { passive: false });
+      on(canvas, 'touchcancel', () => {
+        if (p3.dragging) { placeDragging(); draw(); }
+      });
+      // Кнопка «Повернуть» — для мобильных (правый клик там недоступен)
+      if (rotateBtn) {
+        on(rotateBtn, 'click', () => {
+          rotateDragging(15);
+          draw();
+        });
+      }
       on(window, 'keydown', (e) => {
         if (!p3 || !p3.dragging) return;
         const k = e.key;
@@ -7333,7 +7445,7 @@
 
       const headline = document.createElement('h2');
       headline.className = 'level7-final-headline';
-      headline.textContent = 'С днём рождения, любимый.';
+      headline.textContent = 'С днём рождения, любимый!';
       wrap.appendChild(headline);
 
       // Поздравительный текст — компактно, без переноса между предложениями.
@@ -7388,9 +7500,12 @@
       btn.type = 'button';
       btn.textContent = 'На карту';
       on(btn, 'click', () => {
-        // Плавно гасим финальную мелодию за 1с перед переходом
+        // Плавно гасим финальную мелодию за 1с перед переходом.
+        // Идём СРАЗУ на карту, минуя промежуточный экран «Финал.» —
+        // этот birthday-экран уже сам по себе финал.
         AUDIO.stopLoop('final', { fadeOut: 1000 });
-        if (onCompleteCb) onCompleteCb();
+        markLevelCompleted(7);
+        goTo('map');
       });
       btnRow.appendChild(btn);
 
@@ -8212,16 +8327,21 @@
     });
   }
 
-  // Подгружает фото-полароид в чемодан-карточку L6. Файлы лежат прямо в
-  // /images/{name}.{jpg|JPG|png|jpeg}. На GitHub Pages регистр расширения
-  // важен — поэтому перебираем оба варианта.
+  // Подгружает фото-полароид в чемодан-карточку L6. Пробуем 2 локации:
+  // - images/{name}.ext (как у тебя сейчас)
+  // - images/polaroids/{name}.ext (старая структура, на всякий случай)
+  // И все варианты регистра расширения — GitHub Pages case-sensitive.
   function tryLoadPolaroidPhoto(polaroidEl, name) {
     const photoEl = polaroidEl.querySelector('.polaroid-photo');
     if (!photoEl) return;
-    const exts = ['jpg', 'JPG', 'png', 'PNG', 'jpeg', 'JPEG'];
+    const paths = [];
+    ['jpg','JPG','jpeg','JPEG','png','PNG'].forEach(ext => {
+      paths.push('images/' + name + '.' + ext);
+      paths.push('images/polaroids/' + name + '.' + ext);
+    });
     let i = 0;
     function tryNext() {
-      if (i >= exts.length) return;
+      if (i >= paths.length) return;
       const img = new Image();
       img.className = 'polaroid-img';
       img.alt = name;
@@ -8231,7 +8351,7 @@
         photoEl.style.background = '#000';
       };
       img.onerror = () => { i++; tryNext(); };
-      img.src = 'images/' + name + '.' + exts[i];
+      img.src = paths[i];
     }
     tryNext();
   }

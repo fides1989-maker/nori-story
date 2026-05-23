@@ -4181,6 +4181,56 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   *:hover { transition: none !important; }
 }
 
+/* Ряд кнопок на финале ветки L2 (вторичная + основная) */
+.level2-branch-final-btns {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.level2-branch-final-btns .btn {
+  flex: 1 1 auto;
+  min-width: 160px;
+  max-width: 240px;
+}
+@media (max-width: 480px) {
+  .level2-branch-final-btns { flex-direction: column; align-items: stretch; }
+  .level2-branch-final-btns .btn { max-width: 100%; }
+}
+
+/* Кнопка «Повернуть» для плитки в L5 Part 3 — видна на тач-устройствах */
+.level5-tile-rotate-btn {
+  display: none;
+  margin: 8px auto 0;
+  padding: 10px 18px;
+  background: var(--bg-card);
+  border: 1.5px solid #d8c79a;
+  border-radius: 8px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  color: var(--accent-terracotta);
+  cursor: pointer;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.level5-tile-rotate-btn:active {
+  background: var(--accent-terracotta);
+  color: #fff;
+}
+@media (hover: none), (max-width: 768px) {
+  .level5-tile-rotate-btn { display: block; }
+}
+
+/* L5 Part 3 — canvas плитки на мобильном: запрещаем браузерные жесты */
+.level5-tile-canvas {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* ===========================================================
    ВИРТУАЛЬНОЕ УПРАВЛЕНИЕ (D-pad + кнопки) — для мобильных
    =========================================================== */
@@ -4243,7 +4293,9 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   -webkit-tap-highlight-color: transparent;
 }
 .dpad-qr:active { transform: scale(0.94); }
-@media (max-width: 480px) {
+/* Показываем D-pad на всех тач-устройствах (любой ширины — iPad тоже),
+   а также на любых экранах ≤ 768px на случай touch-screen ноутов. */
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
   .level3-touch-controls,
   .level5-touch-controls { display: flex !important; }
 }
