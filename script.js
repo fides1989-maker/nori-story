@@ -7383,7 +7383,7 @@
             // Кнопка → финал
             btn.style.opacity = '1';
             btn.disabled = false;
-            btn.textContent = 'Теперь к настоящему подарку →';
+            btn.textContent = 'Ты прошёл игру!';
             // Заменяем обработчик
             const newBtn = btn.cloneNode(true);
             btn.parentNode.replaceChild(newBtn, btn);
@@ -7684,16 +7684,23 @@
   }
 
   // ---------- Карта ----------
-  // Точки расставлены по зигзагу внутри viewBox 600×420.
-  const MAP_VIEWBOX = { w: 600, h: 420 };
+  // Фон карты — иллюстрация images/map-bg.png (1480×1062, ≈1.393:1).
+  // ViewBox подобран в той же пропорции, чтобы координаты лапок точно
+  // совпадали с картинками на фоне.
+  const MAP_VIEWBOX = { w: 600, h: 430 };
+  // Лапки привязаны к иллюстрациям на map-bg.png. Координаты заданы в %
+  // от viewBox (600×430) и переведены в абсолютные значения. См. orig
+  // проценты в комментариях справа.
+  // Маршрут: печатная машинка (низ-лево) → зелёный дом → полицейский
+  // (верх-лево) → ПСБ (верх-центр) → прораб → самолёт+тории → домик.
   const MAP_POINTS = [
-    { x: 80,  y: 350 },
-    { x: 175, y: 250 },
-    { x: 100, y: 140 },
-    { x: 230, y: 70  },
-    { x: 370, y: 130 },
-    { x: 460, y: 240 },
-    { x: 530, y: 360 },
+    { x: 110, y: 365 },   // 1: над печатной машинкой
+    { x: 173, y: 236 },   // 2: у зелёного дома
+    { x: 132, y: 150 },   // 3: у полицейского с вином
+    { x: 258, y: 113 },   // 4: под зданием ПСБ
+    { x: 359, y: 137 },   // 5: у прораба со стремянкой
+    { x: 433, y: 215 },   // 6: у самолёта/тории/Фудзи
+    { x: 478, y: 343 },   // 7: у домика с сердцем
   ];
   const POINT_RADIUS = 26;
 
@@ -7789,17 +7796,19 @@
     mapDialog.onComplete = null;
   }
 
-  // Нори сидит рядом с текущей доступной лапой (или в центре после прохождения всех).
+  // Нори сидит рядом с активной лапой, со сдвигом, чтобы не закрывать ни
+  // саму лапу с цифрой (она справа от лапы), ни ключевые элементы
+  // иллюстраций. Координаты привязаны к MAP_POINTS.
   const NORI_BY_PAW = [
-    { x: 140, y: 290 },  // у лапы 1
-    { x: 235, y: 210 },  // у лапы 2
-    { x: 155, y: 100 },  // у лапы 3
-    { x: 310, y: 50 },   // у лапы 4 (правее, выше)
-    { x: 290, y: 80 },   // у лапы 5 (левее, выше)
-    { x: 400, y: 205 },  // у лапы 6
-    { x: 470, y: 305 },  // у лапы 7
+    { x: 150, y: 355 },   // у лапы 1 — справа от печатной машинки
+    { x: 215, y: 230 },   // у лапы 2 — справа от зелёного дома
+    { x: 175, y: 154 },   // у лапы 3 — справа от полицейского
+    { x: 301, y: 116 },   // у лапы 4 — справа от ПСБ
+    { x: 402, y: 140 },   // у лапы 5 — справа от прораба
+    { x: 411, y: 255 },   // у лапы 6 — ниже-слева от тории
+    { x: 445, y: 338 },   // у лапы 7 — слева от домика
   ];
-  const NORI_FINAL = { x: 300, y: 200 };
+  const NORI_FINAL = { x: 300, y: 215 };
 
   function currentNoriPos() {
     const next = firstAvailableLevelId();
@@ -7931,10 +7940,11 @@
     g.dataset.levelId = String(levelId);
 
     // Стабильный хитбокс (невидимый). Не двигается, не дёргает hover.
+    // 80×80 — комфортно для тапа на мобильном.
     const hit = document.createElementNS(svgNS, 'rect');
     hit.setAttribute('class', 'paw-hit');
-    hit.setAttribute('x', '-32'); hit.setAttribute('y', '-32');
-    hit.setAttribute('width', '64'); hit.setAttribute('height', '64');
+    hit.setAttribute('x', '-40'); hit.setAttribute('y', '-40');
+    hit.setAttribute('width', '80'); hit.setAttribute('height', '80');
     g.appendChild(hit);
 
     // Сам отпечаток — вращаем целиком (включая подушечку и пальчики).
@@ -7985,22 +7995,9 @@
     canvas.appendChild(buildMapSvg());
     root.appendChild(canvas);
 
-    // Реплика Нори под картой
-    const dialog = document.createElement('div');
-    dialog.className = 'nori-dialog-wrap';
-    const speaker = document.createElement('span');
-    speaker.className = 'nori-dialog-speaker';
-    speaker.textContent = 'Нори:';
-    dialog.appendChild(speaker);
-    const textEl = document.createElement('span');
-    textEl.className = 'nori-dialog-text';
-    dialog.appendChild(textEl);
-    root.appendChild(dialog);
-    mapDialog.el = dialog;
-    mapDialog.textEl = textEl;
-
-    // Подвал: кнопка сброса. Кнопка «К финалу» убрана — финальный экран
-    // уровня 7 («С днём рождения, любимый!») и есть последний слайд.
+    // Подвал: кнопка сброса. Идёт СРАЗУ под картой, чтобы не было пустого
+    // интервала из-за заведомо пустой плашки Нори (она появляется ниже
+    // только когда есть реплика).
     const footer = document.createElement('div');
     footer.className = 'map-footer';
     footer.appendChild(document.createElement('span'));
@@ -8016,6 +8013,21 @@
     });
     footer.appendChild(reset);
     root.appendChild(footer);
+
+    // Реплика Нори под кнопкой — появляется только когда есть текст,
+    // пустую плашку не показываем.
+    const dialog = document.createElement('div');
+    dialog.className = 'nori-dialog-wrap';
+    const speaker = document.createElement('span');
+    speaker.className = 'nori-dialog-speaker';
+    speaker.textContent = 'Нори:';
+    dialog.appendChild(speaker);
+    const textEl = document.createElement('span');
+    textEl.className = 'nori-dialog-text';
+    dialog.appendChild(textEl);
+    root.appendChild(dialog);
+    mapDialog.el = dialog;
+    mapDialog.textEl = textEl;
 
     // Клик в любом месте карты (кроме интерактивных элементов с собственной логикой)
     // скрывает текущую реплику — и по самой плашке тоже.
@@ -8080,60 +8092,22 @@
     svg.setAttribute('viewBox', '0 0 ' + MAP_VIEWBOX.w + ' ' + MAP_VIEWBOX.h);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-    // Декоративный фон — разбросанные «штуки кошачьей жизни»: сердечки,
-    // клубочки, рыбки, звёздочки. Тонкие, полупрозрачные, не отвлекают.
-    const decor = document.createElementNS(svgNS, 'g');
-    decor.setAttribute('class', 'map-decor');
-    const DECOR = [
-      // [type, x, y, rot]
-      ['heart',   60,  60,   12],
-      ['yarn',   520,  40,  -8],
-      ['fish',   560, 180,   18],
-      ['star',    40, 200,    0],
-      ['heart',  330, 200,  -10],
-      ['paw',    480, 350,   25],
-      ['yarn',    90, 380,   15],
-      ['fish',    20, 100,  -20],
-      ['star',   570, 290,    0],
-      ['paw',    260, 380,  -18],
-      ['heart',  140, 30,    24],
-      ['star',   300, 30,     0],
-    ];
-    DECOR.forEach(([type, x, y, rot]) => {
-      const g = document.createElementNS(svgNS, 'g');
-      g.setAttribute('class', 'decor-' + type);
-      g.setAttribute('transform', 'translate(' + x + ',' + y + ') rotate(' + rot + ')');
-      g.innerHTML = DECOR_SHAPES[type];
-      decor.appendChild(g);
-    });
-    svg.appendChild(decor);
-
-    // Тропинка
-    const pathD = buildSmoothPath(MAP_POINTS);
-    const path = document.createElementNS(svgNS, 'path');
-    path.setAttribute('class', 'map-path');
-    path.setAttribute('d', pathD);
-    svg.appendChild(path);
-
-    // Маленькие следы лапок — видны вдоль уже пройденного пути
-    for (let i = 0; i < MAP_POINTS.length - 1; i++) {
-      const from = MAP_POINTS[i];
-      const to = MAP_POINTS[i + 1];
-      const targetLevelId = i + 2;
-      const visible = isLevelCompleted(targetLevelId);
-      for (let k = 1; k <= 3; k++) {
-        const t = k / 4;
-        const px = from.x + (to.x - from.x) * t;
-        const py = from.y + (to.y - from.y) * t;
-        const angle = Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI + 90;
-        const offset = (k % 2 === 0) ? 8 : -8;
-        const nx = Math.cos((angle - 90) * Math.PI / 180) * offset;
-        const ny = Math.sin((angle - 90) * Math.PI / 180) * offset;
-        const paw = createPawGroup(svgNS, px + nx, py + ny, angle);
-        if (visible) paw.classList.add('paw-visible');
-        svg.appendChild(paw);
-      }
-    }
+    // Фон-иллюстрация. Кладём ПЕРВОЙ, чтобы лапки и Нори рендерились поверх.
+    // Картинка images/map-bg.png — 1480×1062, аспект ≈ viewBox 600×430.
+    const bg = document.createElementNS(svgNS, 'image');
+    bg.setAttribute('href', 'images/map-bg.png');
+    // Старые браузеры поддерживают xlink:href:
+    bg.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', 'images/map-bg.png');
+    bg.setAttribute('x', '0');
+    bg.setAttribute('y', '0');
+    bg.setAttribute('width', String(MAP_VIEWBOX.w));
+    bg.setAttribute('height', String(MAP_VIEWBOX.h));
+    bg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    // КЛЮЧЕВОЕ: фон не должен ловить клики — иначе на мобильном
+    // (и иногда на десктопе) клики по лапкам уходят в SVG image и
+    // уровень не открывается.
+    bg.style.pointerEvents = 'none';
+    svg.appendChild(bg);
 
     // Большие лапы-уровни
     const available = firstAvailableLevelId();
@@ -8425,6 +8399,9 @@
   }
 
   function buildLevelCompleteView(level) {
+    // На экране «Уровень пройден» верхняя реплика Нори не нужна — её
+    // место занимает поздравление/полароиды/фото уровня.
+    document.querySelector('.nori-quote')?.classList.add('hidden');
     // На L3 продолжает играть georgia.mp3 из финала — success не нужен,
     // он бы перебил мелодию.
     if (level.id !== 3) {

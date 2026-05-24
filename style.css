@@ -247,35 +247,24 @@ p { margin: 0 0 14px; }
 }
 
 .map-canvas {
-  background:
-    radial-gradient(ellipse at 30% 20%, rgba(244, 215, 165, 0.6) 0%, transparent 50%),
-    radial-gradient(ellipse at 75% 80%, rgba(232, 195, 165, 0.45) 0%, transparent 55%),
-    linear-gradient(135deg, var(--bg-paper) 0%, #f3e5c5 100%);
-  background-attachment: local;
+  /* Тонкий бежевый кант под иллюстрацию (map-bg.png рендерится внутри SVG,
+     этот фон — это «паспарту» вокруг). */
+  background: #f4ead4;
   border-radius: var(--radius);
   border: 2px solid #d9c5a0;
-  padding: 16px;
+  padding: 8px;
   box-shadow:
     0 8px 24px rgba(122, 90, 58, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
   position: relative;
   overflow: hidden;
-}
-/* Лёгкая «бумажная» текстура поверх карты */
-.map-canvas::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    radial-gradient(circle at 1px 1px, rgba(122, 106, 85, 0.12) 1px, transparent 0);
-  background-size: 22px 22px;
-  pointer-events: none;
-  opacity: 0.7;
+  /* Аспект совпадает с map-bg.png (1480×1062 ≈ 1.393:1) */
+  aspect-ratio: 1480 / 1062;
 }
 .map-svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;        /* fill parent (которому задан aspect-ratio 3:2) */
   position: relative;
   z-index: 1;
 }
@@ -317,8 +306,13 @@ p { margin: 0 0 14px; }
 /* === Лапа-уровень === */
 .map-point {
   cursor: default;
+  /* Слегка прозрачные — чтобы не загораживать иллюстрацию под ними. */
+  opacity: 0.85;
   /* НЕ трогаем transform на hover — иначе hitbox двигается и анимация дёргается */
 }
+.map-point.available { opacity: 0.95; }
+.map-point.available:hover,
+.map-point.completed:hover { opacity: 1; }
 /* Невидимый прямоугольник под лапой держит стабильный hitbox */
 .map-point .paw-hit {
   fill: transparent;
@@ -376,19 +370,23 @@ p { margin: 0 0 14px; }
   filter: drop-shadow(0 0 12px rgba(201, 123, 90, 0.85));
 }
 
-/* Пройденная: золотая заливка с тёплой обводкой — заметно отличается от текущей */
-.map-point.completed { cursor: pointer; }
-.map-point.completed .paw-shape ellipse,
-.map-point.completed .paw-shape path,
-.map-point.completed .paw-shape circle {
-  fill: #c9a14b;
-  stroke: #8c6a3a;
+/* Пройденная: хаки заливка с тёмной обводкой — заметно отличается от
+   терракотовой «доступной». Используем «* +!important», чтобы перебить
+   любые встроенные/inline атрибуты fill, которые могут стоять на отдельных
+   path’ах самой лапы. */
+.map-point.completed { cursor: pointer; opacity: 0.9; }
+.map-point.completed .paw-shape * {
+  fill: #8a8c44 !important;       /* хаки */
+  stroke: #5a5c2a !important;
   stroke-width: 1.5;
-  fill-opacity: 0.95;
+  fill-opacity: 0.95 !important;
 }
-.map-point.completed .paw-label { fill: #6a4f24; }
+.map-point.completed .paw-label {
+  fill: #4a4c1e !important;
+  opacity: 1;
+}
 .map-point.completed:hover .paw-shape {
-  filter: drop-shadow(0 0 8px rgba(201, 161, 75, 0.6));
+  filter: drop-shadow(0 0 8px rgba(138, 140, 68, 0.55));
 }
 
 @keyframes map-paw-pulse {
@@ -486,14 +484,17 @@ p { margin: 0 0 14px; }
   border-left: 3px solid var(--accent-terracotta);
   border-radius: 10px;
   box-shadow: var(--shadow-soft);
-  display: flex;
   gap: 10px;
   align-items: flex-start;
   opacity: 0;
   transform: translateY(4px);
   transition: opacity 0.3s ease, transform 0.3s ease;
+  /* Не занимаем место когда реплика пустая — иначе появляется
+     визуальный интервал между картой и кнопкой «Сбросить прогресс». */
+  display: none;
 }
 .nori-dialog-wrap.visible {
+  display: flex;
   opacity: 1;
   transform: translateY(0);
 }
@@ -3909,7 +3910,7 @@ p { margin: 0 0 14px; }
   z-index: 2;
   width: 90%;
   max-width: 360px;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1 / 1;          /* квадрат — чтобы фотка целиком влезала */
   border: 2px dashed var(--accent-terracotta);
   border-radius: 8px;
   background: rgba(255,255,255,0.5);
@@ -3918,7 +3919,7 @@ p { margin: 0 0 14px; }
   justify-content: center;
   overflow: hidden;
 }
-/* Когда фото подгрузилось — убираем пунктир, делаем сплошную тонкую рамку */
+/* Когда фото подгрузилось — убираем пунктир, делаем сплошную тонкую рамку. */
 .level7-photo-frame.has-photo {
   border: 1px solid var(--accent-terracotta);
   background: transparent;
@@ -3927,7 +3928,8 @@ p { margin: 0 0 14px; }
 .level7-photo-frame .level-photo {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: cover;             /* cover — обрезаем под квадрат, заполняем рамку */
+  object-position: center;
   border-radius: 6px;
   display: block;
 }
@@ -4111,10 +4113,11 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   .start-text { font-size: 0.95rem; }
   .start-text.first { font-size: 1rem; }
 
-  /* Карта — компактнее, точки больше для тапа */
-  .map-svg { aspect-ratio: 4 / 5; }
-  .map-paw .paw-shape { transform: scale(1.15); }
-  .map-point .paw-hit { transform: scale(1.5); }
+  /* Карта — масштабируется по аспекту 3:2 из родителя (.map-canvas).
+     Лапки увеличиваем для удобства тапа: и тушку, и хитбокс. */
+  .map-point .paw-shape { transform: scale(1.35); }
+  .map-point .paw-hit { transform: scale(1.6); }
+  .map-nori { transform-origin: center; }
 
   /* Кнопка звука — чуть меньше, но всё ещё кликабельная */
   .sound-toggle { width: 36px; height: 36px; font-size: 16px; top: 8px; right: 8px; }
